@@ -88,7 +88,7 @@ abstract class AbstractParser
         else
         {
             name = unescapeKey(line.substring(0, idx)).trim();
-            value = unescapeValue(line.substring(idx + 1)).trim();
+            value = trimSpace(unescapeValue(line.substring(idx + 1)));
         }
 
         if (name.length() == 0)
@@ -102,6 +102,19 @@ abstract class AbstractParser
         }
 
         handler.handleOption(name, value);
+    }
+    
+    String trimSpace(String line) {
+        int len = line.length();
+        int st = 0;
+
+        while ((st < len) && (line.charAt(st) == ' ')) {
+            st++;
+        }
+        while ((st < len) && (line.charAt(len - 1) == ' ')) {
+            len--;
+        }
+        return ((st > 0) || (len < line.length())) ? line.substring(st, len) : line;
     }
 
     String unescapeKey(String line)
