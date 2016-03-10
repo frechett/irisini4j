@@ -37,7 +37,6 @@ class UnicodeInputStreamReader extends Reader
         private final byte[] _bytes;
         private Charset _charset;
 
-        @SuppressWarnings("PMD.ArrayIsStoredDirectly")
         private Bom(String charsetName, byte[] bytes)
         {
             try

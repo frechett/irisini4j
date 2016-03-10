@@ -22,7 +22,6 @@ public class TypeValuesPair
     private final Type _type;
     private final String[] _values;
 
-    @SuppressWarnings("PMD.ArrayIsStoredDirectly")
     public TypeValuesPair(Type type, String[] values)
     {
         _type = type;

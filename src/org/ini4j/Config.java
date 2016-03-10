@@ -19,7 +19,6 @@ import java.io.Serializable;
 
 import java.nio.charset.Charset;
 
-@SuppressWarnings("PMD.ExcessivePublicCount")
 public class Config implements Cloneable, Serializable
 {
     public static final String KEY_PREFIX = "org.ini4j.config.";
