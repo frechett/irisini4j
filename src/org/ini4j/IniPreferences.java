@@ -20,6 +20,8 @@ import static org.ini4j.IniPreferencesFactory.KEY_USER;
 import static org.ini4j.IniPreferencesFactory.PROPERTIES;
 
 import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.Reader;
@@ -632,9 +634,12 @@ public class IniPreferences extends AbstractPreferences {
 		change = false;
 		try {
 			final File file = _ini.getFile();
-			if (file != null && file.canWrite()) {
-				_ini.store(file);
+			if (file != null && (!file.exists() || file.canWrite())) {
+				try (FileOutputStream fos = new FileOutputStream(file)) {
+					_ini.store(fos);
+				}
 			}
+		} catch (FileNotFoundException e) {
 		} catch (IOException e) {
 			getLogger().warning(e.toString());
 		}
