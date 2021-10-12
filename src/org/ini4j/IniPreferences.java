@@ -15,19 +15,26 @@
  */
 package org.ini4j;
 
+import static org.ini4j.IniPreferencesFactory.KEY_SYSTEM;
+import static org.ini4j.IniPreferencesFactory.KEY_USER;
+import static org.ini4j.IniPreferencesFactory.PROPERTIES;
+
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.Reader;
+import java.net.URI;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Properties;
+import java.util.logging.Logger;
 import java.util.prefs.AbstractPreferences;
 import java.util.prefs.BackingStoreException;
+import java.util.prefs.Preferences;
 
 public class IniPreferences extends AbstractPreferences {
-
 	protected class SectionPreferences extends AbstractPreferences {
-
 		/** underlaying <code>Section</code> implementation */
 		private final Ini.Section _section;
 
@@ -48,35 +55,11 @@ public class IniPreferences extends AbstractPreferences {
 			newNode = isNew;
 		}
 
-		/**
-		 * Implements the <CODE>childrenNamesSpi</CODE> method as per the
-		 * specification in
-		 * {@link java.util.prefs.AbstractPreferences#childrenNamesSpi()}.
-		 *
-		 * This implementation allways returns an empty array.
-		 *
-		 * @return an emty array.
-		 * @throws BackingStoreException
-		 *             if this operation cannot be completed due to a failure in
-		 *             the backing store, or inability to communicate with it.
-		 */
 		@Override
 		protected String[] childrenNamesSpi() throws BackingStoreException {
 			return _section.childrenNames();
 		}
 
-		/**
-		 * Implements the <CODE>childSpi</CODE> method as per the specification
-		 * in {@link java.util.prefs.AbstractPreferences#childSpi(String)}.
-		 *
-		 * This implementation doesn't support this operation.
-		 *
-		 * @throws UnsupportedOperationException
-		 *             this implementation allways throws this exception
-		 * @param name
-		 *            child name
-		 * @return child node
-		 */
 		@Override
 		protected SectionPreferences childSpi(String name)
 				throws UnsupportedOperationException {
@@ -85,6 +68,8 @@ public class IniPreferences extends AbstractPreferences {
 
 			if (isNew) {
 				child = _section.addChild(name);
+				change = true;
+				store();
 			}
 
 			return new SectionPreferences(this, child, isNew);
@@ -93,7 +78,7 @@ public class IniPreferences extends AbstractPreferences {
 		/**
 		 * Implements the <CODE>flush</CODE> method as per the specification in
 		 * {@link java.util.prefs.Preferences#flush()}.
-		 *
+		 * <p>
 		 * This implementation just call parent's <code>flush()</code> method.
 		 *
 		 * @throws BackingStoreException
@@ -161,7 +146,16 @@ public class IniPreferences extends AbstractPreferences {
 		 */
 		@Override
 		protected void putSpi(String key, String value) {
+			String old = _section.get(key);
+			if (old == value) {
+				return;
+			}
+			if (old != null && old.equals(value)) {
+				return;
+			}
 			_section.put(key, value);
+			change = true;
+			store();
 		}
 
 		/**
@@ -176,6 +170,8 @@ public class IniPreferences extends AbstractPreferences {
 		@Override
 		protected void removeNodeSpi() throws BackingStoreException {
 			_ini.remove(_section);
+			change = true;
+			store();
 		}
 
 		/**
@@ -187,7 +183,10 @@ public class IniPreferences extends AbstractPreferences {
 		 */
 		@Override
 		protected void removeSpi(String key) {
-			_section.remove(key);
+			if (_section.remove(key) != null) {
+				change = true;
+				store();
+			}
 		}
 
 		/**
@@ -221,11 +220,191 @@ public class IniPreferences extends AbstractPreferences {
 		}
 	}
 
+	private static volatile Preferences _system;
+	private static volatile Preferences _user;
 	/** frequently used empty String array */
 	private static final String[] EMPTY = {};
 
+	/**
+	 * Get INI location.
+	 * 
+	 * @param key
+	 *            the property key.
+	 * @return the INI location or null if none.
+	 */
+	private static String getIniLocation(String key) {
+		String location = Config.getSystemProperty(key);
+		if (location == null) {
+			try {
+				Properties props = new Properties();
+				props.load(Thread.currentThread().getContextClassLoader()
+						.getResourceAsStream(PROPERTIES));
+				location = props.getProperty(key);
+			} catch (Exception x) {
+				assert true;
+			}
+		}
+		return location;
+	}
+
+	private static Logger getLogger() {
+		return Logger.getLogger("java.util.prefs");
+	}
+
+	/**
+	 * Get the resource.
+	 * 
+	 * @param location
+	 *            the location.
+	 * @return the resource.
+	 * @throws IllegalArgumentException
+	 *             if error.
+	 */
+	private static URL getResource(String location)
+			throws IllegalArgumentException {
+		try {
+			URI uri = new URI(location);
+			URL url;
+
+			if (uri.getScheme() == null) {
+				url = Thread.currentThread().getContextClassLoader()
+						.getResource(location);
+			} else {
+				url = uri.toURL();
+			}
+
+			return url;
+		} catch (Exception x) {
+			throw (IllegalArgumentException) new IllegalArgumentException()
+					.initCause(x);
+		}
+	}
+
+	/**
+	 * Get the system root.
+	 * 
+	 * @return the system root.
+	 */
+	public static Preferences getSystemRoot() {
+		Preferences system = _system;
+		if (system == null) {
+			system = newIniPreferences(false);
+			_system = system;
+		}
+		return system;
+	}
+
+	/**
+	 * Get the system root file.
+	 * 
+	 * @return the system root file.
+	 */
+	public static File getSystemRootFile() {
+		String root = System.getProperty("java.util.prefs.systemRoot");
+		if (root == null || root.startsWith("~/")) {
+			final String userHome = System.getProperty("user.home");
+			if (root == null) {
+				root = userHome;
+			} else {
+				root = userHome + root.substring(1);
+			}
+		}
+		File rootDir = new File(root);
+		// Attempt to create root directory if it does not yet exist.
+		if (!rootDir.exists()) {
+			if (!rootDir.mkdirs()) {
+				getLogger().warning(
+						"Couldn't create system preferences directory.");
+			}
+		}
+		return new File(rootDir, "system.ini");
+	}
+
+	/**
+	 * Get the user root.
+	 * 
+	 * @return the user root.
+	 */
+	public static Preferences getUserRoot() {
+		Preferences user = _user;
+		if (user == null) {
+			user = newIniPreferences(true);
+			_user = user;
+		}
+		return user;
+	}
+
+	/**
+	 * Get the user root file.
+	 * 
+	 * @return the user root file.
+	 */
+	public static File getUserRootFile() {
+		String root = System.getProperty("java.util.prefs.userRoot");
+		if (root == null || root.startsWith("~/")) {
+			final String userHome = System.getProperty("user.home");
+			if (root == null) {
+				root = userHome;
+			} else {
+				root = userHome + root.substring(1);
+			}
+		}
+		File rootDir = new File(root);
+		// Attempt to create root directory if it does not yet exist.
+		if (!rootDir.exists()) {
+			if (!rootDir.mkdirs()) {
+				getLogger()
+						.warning("Couldn't create user preferences directory.");
+			}
+		}
+		return new File(rootDir, "user.ini");
+	}
+
+	/**
+	 * Create the new INI preferences.
+	 * 
+	 * @param user
+	 *            true if user preferences, false if system preferences.
+	 * @return the new INI preferences.
+	 */
+	private static Preferences newIniPreferences(boolean user) {
+		final Ini ini = new Ini();
+		try {
+			String location;
+			if (user) {
+				location = getIniLocation(KEY_USER);
+			} else {
+				location = getIniLocation(KEY_SYSTEM);
+			}
+			if (location != null) {
+				try {
+					ini.load(getResource(location).openStream());
+				} catch (Exception x) {
+					throw (IllegalArgumentException) new IllegalArgumentException()
+							.initCause(x);
+				}
+			} else {
+				File file;
+				if (user) {
+					file = getUserRootFile();
+				} else {
+					file = getSystemRootFile();
+				}
+				ini.setFile(file);
+				if (file.canRead()) {
+					ini.load();
+				}
+			}
+		} catch (Exception ex) {
+			throw (IllegalArgumentException) new IllegalArgumentException()
+					.initCause(ex);
+		}
+		return new IniPreferences(ini);
+	}
+
 	/** underlaying <code>Ini</code> implementation */
 	private final Ini _ini;
+	private volatile boolean change;
 
 	/**
 	 * Constructs a new preferences node on top of <code>Ini</code> instance.
@@ -241,7 +420,7 @@ public class IniPreferences extends AbstractPreferences {
 	/**
 	 * Constructs a new preferences node based on newly loaded <code>Ini</code>
 	 * instance.
-	 *
+	 * <p>
 	 * This is just a helper constructor, to make simpler constructing
 	 * <code>IniPreferences</code> directly from <code>InputStream</code>.
 	 *
@@ -261,7 +440,7 @@ public class IniPreferences extends AbstractPreferences {
 	/**
 	 * Constructs a new preferences node based on newly loaded <code>Ini</code>
 	 * instance.
-	 *
+	 * <p>
 	 * This is just a helper constructor, to make simpler constructing
 	 * <code>IniPreferences</code> directly from <code>Reader</code>.
 	 *
@@ -281,7 +460,7 @@ public class IniPreferences extends AbstractPreferences {
 	/**
 	 * Constructs a new preferences node based on newly loaded <code>Ini</code>
 	 * instance.
-	 *
+	 * <p>
 	 * This is just a helper constructor, to make simpler constructing
 	 * <code>IniPreferences</code> directly from <code>URL</code>.
 	 *
@@ -337,24 +516,16 @@ public class IniPreferences extends AbstractPreferences {
 
 		if (isNew) {
 			sec = _ini.add(name);
+			change = true;
+			store();
 		}
 
 		return new SectionPreferences(this, sec, isNew);
 	}
 
-	/**
-	 * Implements the <CODE>flushSpi</CODE> method as per the specification in
-	 * {@link java.util.prefs.AbstractPreferences#flushSpi()}.
-	 *
-	 * This implementation does nothing.
-	 *
-	 * @throws BackingStoreException
-	 *             if this operation cannot be completed due to a failure in the
-	 *             backing store, or inability to communicate with it.
-	 */
 	@Override
-	protected void flushSpi() throws BackingStoreException {
-		assert true;
+	protected void flushSpi() {
+		store();
 	}
 
 	/**
@@ -369,7 +540,7 @@ public class IniPreferences extends AbstractPreferences {
 	/**
 	 * Implements the <CODE>getSpi</CODE> method as per the specification in
 	 * {@link java.util.prefs.AbstractPreferences#getSpi(String)}.
-	 *
+	 * <p>
 	 * This implementation doesn't support this operation, so allways throws
 	 * UnsupportedOperationException.
 	 *
@@ -389,7 +560,7 @@ public class IniPreferences extends AbstractPreferences {
 	/**
 	 * Implements the <CODE>keysSpi</CODE> method as per the specification in
 	 * {@link java.util.prefs.AbstractPreferences#keysSpi()}.
-	 *
+	 * <p>
 	 * This implementation allways return an empty array.
 	 *
 	 * @return an empty array.
@@ -405,7 +576,7 @@ public class IniPreferences extends AbstractPreferences {
 	/**
 	 * Implements the <CODE>putSpi</CODE> method as per the specification in
 	 * {@link java.util.prefs.AbstractPreferences#putSpi(String,String)}.
-	 *
+	 * <p>
 	 * This implementation doesn;t support this operation, so allways throws
 	 * UnsupportedOperationException.
 	 *
@@ -425,7 +596,7 @@ public class IniPreferences extends AbstractPreferences {
 	/**
 	 * Implements the <CODE>removeNodeSpi</CODE> method as per the specification
 	 * in {@link java.util.prefs.AbstractPreferences#removeNodeSpi()}.
-	 *
+	 * <p>
 	 * This implementation doesn;t support this operation, so allways throws
 	 * UnsupportedOperationException.
 	 * 
@@ -454,10 +625,25 @@ public class IniPreferences extends AbstractPreferences {
 		throw new UnsupportedOperationException();
 	}
 
+	private void store() {
+		if (!change) {
+			return;
+		}
+		change = false;
+		try {
+			final File file = _ini.getFile();
+			if (file != null && file.canWrite()) {
+				_ini.store(file);
+			}
+		} catch (IOException e) {
+			getLogger().warning(e.toString());
+		}
+	}
+
 	/**
 	 * Implements the <CODE>syncSpi</CODE> method as per the specification in
 	 * {@link java.util.prefs.AbstractPreferences#syncSpi()}.
-	 *
+	 * <p>
 	 * This implementation does nothing.
 	 *
 	 * @throws BackingStoreException
