@@ -7,7 +7,7 @@ public class Version {
 	 * @return the version string.
 	 */
 	public static String getVersion() {
-		return "0.5.4 IRIS2021285";
+		return "0.5.4 IRIS2021286";
 	}
 
 	public static void main(String[] args) {
