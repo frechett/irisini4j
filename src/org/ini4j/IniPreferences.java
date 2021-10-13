@@ -46,7 +46,7 @@ public class IniPreferences extends AbstractPreferences {
 		 *
 		 * @param parent
 		 *            parent preferences node
-		 * @parem section underlaying Ini.Section instance
+		 * @param section underlaying Ini.Section instance
 		 * @param isNew
 		 *            indicate is this a new node or already existing one
 		 */
@@ -70,8 +70,10 @@ public class IniPreferences extends AbstractPreferences {
 
 			if (isNew) {
 				child = _section.addChild(name);
-				change = true;
-				store();
+				if (!ignoreChange) {
+					change = true;
+					store();
+				}
 			}
 
 			return new SectionPreferences(this, child, isNew);
@@ -115,7 +117,7 @@ public class IniPreferences extends AbstractPreferences {
 		 *         preference node, or null if there is no association for this
 		 *         key, or the association cannot be determined at this time.
 		 * @param key
-		 *            key to getvalue for
+		 *            key to get value for
 		 */
 		@Override
 		protected String getSpi(String key) {
@@ -137,6 +139,14 @@ public class IniPreferences extends AbstractPreferences {
 			return _section.keySet().toArray(EMPTY);
 		}
 
+		@Override
+		public Preferences node(String path) {
+			ignoreChange = true;
+			Preferences node = super.node(path);
+			ignoreChange = false;
+			return node;
+		}
+
 		/**
 		 * Implements the <CODE>putSpi</CODE> method as per the specification in
 		 * {@link java.util.prefs.AbstractPreferences#putSpi(String,String)}.
@@ -156,8 +166,10 @@ public class IniPreferences extends AbstractPreferences {
 				return;
 			}
 			_section.put(key, value);
-			change = true;
-			store();
+			if (!ignoreChange) {
+				change = true;
+				store();
+			}
 		}
 
 		/**
@@ -172,8 +184,10 @@ public class IniPreferences extends AbstractPreferences {
 		@Override
 		protected void removeNodeSpi() throws BackingStoreException {
 			_ini.remove(_section);
-			change = true;
-			store();
+			if (!ignoreChange) {
+				change = true;
+				store();
+			}
 		}
 
 		/**
@@ -186,8 +200,10 @@ public class IniPreferences extends AbstractPreferences {
 		@Override
 		protected void removeSpi(String key) {
 			if (_section.remove(key) != null) {
-				change = true;
-				store();
+				if (!ignoreChange) {
+					change = true;
+					store();
+				}
 			}
 		}
 
@@ -407,6 +423,7 @@ public class IniPreferences extends AbstractPreferences {
 	/** underlaying <code>Ini</code> implementation */
 	private final Ini _ini;
 	private volatile boolean change;
+	private volatile boolean ignoreChange;
 
 	/**
 	 * Constructs a new preferences node on top of <code>Ini</code> instance.
@@ -429,9 +446,9 @@ public class IniPreferences extends AbstractPreferences {
 	 * @param input
 	 *            the <code>InputStream</code> containing <code>Ini</code> data
 	 * @throws IOException
-	 *             if an I/O error occured
+	 *             if an I/O error occurred
 	 * @throws InvalidFileFormatException
-	 *             if <code>Ini</code> parsing error occured
+	 *             if <code>Ini</code> parsing error occurred
 	 */
 	public IniPreferences(InputStream input)
 			throws IOException, InvalidFileFormatException {
@@ -449,9 +466,9 @@ public class IniPreferences extends AbstractPreferences {
 	 * @param input
 	 *            the <code>Reader</code> containing <code>Ini</code> data
 	 * @throws IOException
-	 *             if an I/O error occured
+	 *             if an I/O error occurred
 	 * @throws InvalidFileFormatException
-	 *             if <code>Ini</code> parsing error occured
+	 *             if <code>Ini</code> parsing error occurred
 	 */
 	public IniPreferences(Reader input)
 			throws IOException, InvalidFileFormatException {
@@ -469,9 +486,9 @@ public class IniPreferences extends AbstractPreferences {
 	 * @param input
 	 *            the <code>URL</code> containing <code>Ini</code> data
 	 * @throws IOException
-	 *             if an I/O error occured
+	 *             if an I/O error occurred
 	 * @throws InvalidFileFormatException
-	 *             if <code>Ini</code> parsing error occured
+	 *             if <code>Ini</code> parsing error occurred
 	 */
 	public IniPreferences(URL input)
 			throws IOException, InvalidFileFormatException {
@@ -518,8 +535,10 @@ public class IniPreferences extends AbstractPreferences {
 
 		if (isNew) {
 			sec = _ini.add(name);
-			change = true;
-			store();
+			if (!ignoreChange) {
+				change = true;
+				store();
+			}
 		}
 
 		return new SectionPreferences(this, sec, isNew);
@@ -543,16 +562,16 @@ public class IniPreferences extends AbstractPreferences {
 	 * Implements the <CODE>getSpi</CODE> method as per the specification in
 	 * {@link java.util.prefs.AbstractPreferences#getSpi(String)}.
 	 * <p>
-	 * This implementation doesn't support this operation, so allways throws
+	 * This implementation doesn't support this operation, so always throws
 	 * UnsupportedOperationException.
 	 *
 	 * @return if the value associated with the specified key at this preference
 	 *         node, or null if there is no association for this key, or the
 	 *         association cannot be determined at this time.
 	 * @param key
-	 *            key to getvalue for
+	 *            key to get value for
 	 * @throws UnsupportedOperationException
-	 *             this implementation allways throws this exception
+	 *             this implementation always throws this exception
 	 */
 	@Override
 	protected String getSpi(String key) throws UnsupportedOperationException {
@@ -563,7 +582,7 @@ public class IniPreferences extends AbstractPreferences {
 	 * Implements the <CODE>keysSpi</CODE> method as per the specification in
 	 * {@link java.util.prefs.AbstractPreferences#keysSpi()}.
 	 * <p>
-	 * This implementation allways return an empty array.
+	 * This implementation always return an empty array.
 	 *
 	 * @return an empty array.
 	 * @throws BackingStoreException
@@ -575,11 +594,19 @@ public class IniPreferences extends AbstractPreferences {
 		return EMPTY;
 	}
 
+	@Override
+	public Preferences node(String path) {
+		ignoreChange = true;
+		Preferences node = super.node(path);
+		ignoreChange = false;
+		return node;
+	}
+
 	/**
 	 * Implements the <CODE>putSpi</CODE> method as per the specification in
 	 * {@link java.util.prefs.AbstractPreferences#putSpi(String,String)}.
 	 * <p>
-	 * This implementation doesn;t support this operation, so allways throws
+	 * This implementation doesn't support this operation, so always throws
 	 * UnsupportedOperationException.
 	 *
 	 * @param key
@@ -587,7 +614,7 @@ public class IniPreferences extends AbstractPreferences {
 	 * @param value
 	 *            new value for key
 	 * @throws UnsupportedOperationException
-	 *             this implementation allways throws this exception
+	 *             this implementation always throws this exception
 	 */
 	@Override
 	protected void putSpi(String key, String value)
@@ -599,11 +626,11 @@ public class IniPreferences extends AbstractPreferences {
 	 * Implements the <CODE>removeNodeSpi</CODE> method as per the specification
 	 * in {@link java.util.prefs.AbstractPreferences#removeNodeSpi()}.
 	 * <p>
-	 * This implementation doesn;t support this operation, so allways throws
+	 * This implementation doesn't support this operation, so always throws
 	 * UnsupportedOperationException.
 	 * 
 	 * @throws UnsupportedOperationException
-	 *             this implementation allways throws this exception
+	 *             this implementation always throws this exception
 	 * @throws BackingStoreException
 	 *             this implementation never throws this exception
 	 */
@@ -620,7 +647,7 @@ public class IniPreferences extends AbstractPreferences {
 	 * @param key
 	 *            key to remove
 	 * @throws UnsupportedOperationException
-	 *             this implementation allways throws this exception
+	 *             this implementation always throws this exception
 	 */
 	@Override
 	protected void removeSpi(String key) throws UnsupportedOperationException {
